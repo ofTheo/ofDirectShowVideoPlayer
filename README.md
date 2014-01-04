@@ -20,12 +20,15 @@ No warrenty is offered or implied.
 
 
 To try out:
--Make sure you have OF v0.8.0 or higher 
--Download the files and add to your project
--Duplicate the moviePlayerExample and add the following lines to testApp::setup 
+* Make sure you have OF v0.8.0 or higher 
+* Download the files and add to your project
+* Duplicate the moviePlayerExample and add the following lines to testApp::setup 
+
+	```
 	dPlayer = new ofDirectShowPlayer(); 
 	ofPtr <ofBaseVideoPlayer> ptr(dPlayer);
-	fingerMovie.setPlayer(ptr); 
+	fingerMovie.setPlayer(ptr);
+	```
 
 Credits:
 Code is based off of examples provided by MSDN, the videoInput library, http://www.codeproject.com/Articles/30450/A-simple-console-DirectShow-player and http://www.geekpage.jp/en/programming/directshow/
