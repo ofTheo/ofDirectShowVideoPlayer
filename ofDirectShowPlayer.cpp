@@ -289,17 +289,19 @@ static void releaseCom(){
 	}
 }
 
-class DirectShowVideo{
+class DirectShowVideo : public ISampleGrabberCB{
 	public:
 
 	DirectShowVideo(){
 		retainCom();
 		clearValues();
+		InitializeCriticalSection(&critSection);
 	}
 
 	~DirectShowVideo(){
 		tearDown();
 		releaseCom(); 
+		DeleteCriticalSection(&critSection);
 	}
 
 	void tearDown(){
@@ -371,17 +373,66 @@ class DirectShowVideo{
 		lvolume = -1000;
 		evCode = 0; 
 		width = height = 0; 
+		videoSize = 0;
 		bVideoOpened = false;	 
 		bLoop = true;
 		bPaused = false;
 		bPlaying = false;
 		bEndReached = false; 
+		bNewPixels = false;
+		bFrameNew = false;
+		curMovieFrame = -1; 
+		frameCount = -1;
+
 		movieRate = 1.0; 
 		averageTimePerFrame = 1.0/30.0;
 	}
 
+	//------------------------------------------------
+    STDMETHODIMP_(ULONG) AddRef() { return 1; }
+    STDMETHODIMP_(ULONG) Release() { return 2; }
+
+
+	//------------------------------------------------
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppvObject){
+        *ppvObject = static_cast<ISampleGrabberCB*>(this);
+        return S_OK;
+    }
+
+
+	//------------------------------------------------
+    STDMETHODIMP SampleCB(double Time, IMediaSample *pSample){
+
+		BYTE * ptrBuffer = NULL; 
+    	HRESULT hr = pSample->GetPointer(&ptrBuffer);
+
+    	if(hr == S_OK){
+	    	long latestBufferLength = pSample->GetActualDataLength();
+			if(latestBufferLength == videoSize ){
+				EnterCriticalSection(&critSection);
+				memcpy(rawBuffer, ptrBuffer, latestBufferLength);
+				bNewPixels = true;
+
+				//this is just so we know if there is a new frame
+				frameCount++;
+
+				LeaveCriticalSection(&critSection);
+			}else{
+				printf("ERROR: SampleCB() - buffer sizes do not match\n");
+			}
+		}
+
+		return S_OK;
+    }
+
+    //This method is meant to have more overhead
+    STDMETHODIMP BufferCB(double Time, BYTE *pBuffer, long BufferLen){
+    	return E_NOTIMPL;
+    }
+
 	bool loadMovie(string path){
 		tearDown();
+
 
 	// Create the Filter Graph Manager and query for interfaces.
 
@@ -442,6 +493,12 @@ class DirectShowVideo{
 		}
 
 		hr = m_pGrabberF->QueryInterface(IID_ISampleGrabber, (void**)&m_pGrabber);
+		if (FAILED(hr)){
+			tearDown(); 
+			return false;
+		}
+
+		m_pGrabber->SetCallback(this, 0);
 		if (FAILED(hr)){
 			tearDown(); 
 			return false;
@@ -633,7 +690,14 @@ class DirectShowVideo{
 			long eventCode = 0;
 			long ptrParam1 = 0;
 			long ptrParam2 = 0;
-			long timeoutMs = INFINITE;
+			long timeoutMs = 2000;
+
+			if( curMovieFrame != frameCount ){
+				bFrameNew = true;
+			}else{
+				bFrameNew = false; 
+			}
+			curMovieFrame = frameCount;
 
 			while (S_OK == m_pEvent->GetEvent(&eventCode, &ptrParam1, &ptrParam2, 0)){
 		        if (eventCode == EC_COMPLETE ){
@@ -873,6 +937,10 @@ class DirectShowVideo{
 		return height;
 	}
 
+	bool isFrameNew(){
+		return bFrameNew;
+	}
+
 	void nextFrame(){
 		//we have to do it like this as the frame based approach is not very accurate
 		if( bVideoOpened && ( isPlaying() || isPaused() ) ){
@@ -935,21 +1003,36 @@ class DirectShowVideo{
 
 	void getPixels(unsigned char * dstBuffer){
 			
-		if(bVideoOpened){
-			long bufferSize = videoSize; 
-			HRESULT hr = m_pGrabber->GetCurrentBuffer(&bufferSize, (long *)rawBuffer);
-			
-			if(hr==S_OK){
-				if (videoSize == bufferSize){
-					processPixels(rawBuffer, dstBuffer, width, height, true, true);
-				}else{
-					printf("ERROR: GetPixels() - bufferSizes do not match!\n");
-				}
-			}else{
-				printf("ERROR: GetPixels() - Unable to get pixels for device  bufferSize = %i \n", bufferSize);
-			}
+		if(bVideoOpened && bNewPixels){
+
+			EnterCriticalSection(&critSection);
+				processPixels(rawBuffer, dstBuffer, width, height, true, true);
+				bNewPixels = false;
+			LeaveCriticalSection(&critSection);
+
 		}
 	}
+
+	//this is the non-callback approach
+	//void getPixels(unsigned char * dstBuffer){
+	//		
+	//	if(bVideoOpened && isFrameNew()){
+	//		long bufferSize = videoSize; 
+	//		HRESULT hr = m_pGrabber->GetCurrentBuffer(&bufferSize, (long *)rawBuffer);
+	//		
+	//		if(hr==S_OK){
+	//			if (videoSize == bufferSize){
+	//				processPixels(rawBuffer, dstBuffer, width, height, true, true);
+	//			}else{
+	//				printf("ERROR: GetPixels() - bufferSizes do not match!\n");
+	//			}
+	//		}else{
+	//			printf("ERROR: GetPixels() - Unable to get pixels for device  bufferSize = %i \n", bufferSize);
+	//		}
+	//	}
+	//}
+
+	protected:
 
 	HRESULT hr;							// COM return value
 	IGraphBuilder *m_pGraph;		// Graph Builder interface
@@ -978,13 +1061,18 @@ class DirectShowVideo{
 
 	double averageTimePerFrame; 
 
+	bool bFrameNew;
+	bool bNewPixels;
 	bool bVideoOpened;
 	bool bPlaying; 
 	bool bPaused;
 	bool bLoop; 
 	bool bEndReached;
 	double movieRate;
+	int curMovieFrame;
+	int frameCount;
 
+	CRITICAL_SECTION critSection;
 	unsigned char * rawBuffer;
 };
 
@@ -1022,11 +1110,11 @@ void ofDirectShowPlayer::close(){
 }
 
 void ofDirectShowPlayer::update(){
-	if( player && player->bVideoOpened ){
+	if( player && player->isLoaded() ){
 		player->update();
 		
-		if( pix.getWidth() != player->width ){
-			pix.allocate(player->width, player->height, OF_IMAGE_COLOR);
+		if( pix.getWidth() != player->getWidth() ){
+			pix.allocate(player->getWidth(), player->getHeight(), OF_IMAGE_COLOR);
 		}
 
 		player->getPixels(pix.getPixels());
@@ -1046,7 +1134,7 @@ void ofDirectShowPlayer::stop(){
 }		
 	
 bool ofDirectShowPlayer::isFrameNew(){
-	return true; 
+	return ( player && player->isFrameNew() ); 
 }
 
 unsigned char * ofDirectShowPlayer::getPixels(){
