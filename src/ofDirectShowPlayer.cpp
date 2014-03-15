@@ -688,8 +688,8 @@ class DirectShowVideo : public ISampleGrabberCB{
 		if( bVideoOpened ){
 
 			long eventCode = 0;
-			long ptrParam1 = 0;
-			long ptrParam2 = 0;
+			long long ptrParam1 = 0;
+			long long ptrParam2 = 0;
 			long timeoutMs = 2000;
 
 			if( curMovieFrame != frameCount ){
