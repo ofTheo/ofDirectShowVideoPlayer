@@ -871,9 +871,6 @@ class DirectShowVideo : public ISampleGrabberCB{
 
 	void stop(){
 		if( bVideoOpened ){
-			if( isPlaying() ){
-				setPosition(0.0); 
-			}
 			m_pControl->Stop();
 			updatePlayState();
 		}
