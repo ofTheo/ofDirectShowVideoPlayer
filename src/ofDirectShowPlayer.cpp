@@ -631,13 +631,15 @@ class DirectShowVideo : public ISampleGrabberCB{
 			//SaveGraphFile(m_pGraph, L"test1.grf");
 
 			//we have to remove it as well otherwise the graph builder will reconnect it
-			hr = m_pGraph->RemoveFilter(m_pVideoRenderer);
-			if (FAILED(hr)){			
-				printf("failed to remove the default renderer\n");
-				tearDown();
-				return false;
-			}else{
-				m_pVideoRenderer->Release();
+			if(m_pVideoRenderer != NULL){
+				hr = m_pGraph->RemoveFilter(m_pVideoRenderer);
+				if (FAILED(hr)){			
+					printf("failed to remove the default renderer\n");
+					tearDown();
+					return false;
+				}else{
+					m_pVideoRenderer->Release();
+				}
 			}
 
 			//now connect the null renderer to the grabber output, if we don't do this not frames will be captured
