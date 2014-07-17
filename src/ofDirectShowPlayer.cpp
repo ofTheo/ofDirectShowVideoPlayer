@@ -779,9 +779,12 @@ class DirectShowVideo : public ISampleGrabberCB{
 
 	float getPosition(){
 		if( bVideoOpened ){
-			float timeDur = getDurationInSeconds(); 
+			double timeDur = getDurationInSeconds(); 
 			if( timeDur > 0.0 ){
-				return getCurrentTimeInSeconds() / timeDur; 
+				double curTime = getCurrentTimeInSeconds();
+				//mind your types do the division in double _then_ convert to float 
+				float r = float(curTime / timeDur);
+				return r; 
 			}
 		}
 		return 0.0; 
